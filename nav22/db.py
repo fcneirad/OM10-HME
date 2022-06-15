@@ -6,6 +6,20 @@ from scipy.interpolate import interp1d
 pd.set_option('display.max_columns', None)
 
 class DB(object):
+    """
+    Reads the lensed images and stores ir in a pandas dataframe
+
+    Parameters
+    ----------
+    band : string, optional
+        Photometric band from which the events will be shown.
+        Default is 'r', must be one of the LSST photometric bands.
+
+    threshold: float, optional
+        Minimum amplitude of the events in the corresponding photometric band.
+        Default is 0.3, must be either 0.3, 0.5 or 1.0.
+    """
+
     
     def __init__(self, band='r', threshold=0.3, verbose=True):
 
@@ -21,7 +35,11 @@ class DB(object):
         return
 
     def setup(self):
-        
+        """
+        Set initial population of lensed images.
+        You can call this method again to reset any constrain
+        that you may have applied to the dataset.
+        """
         
         self.lenses = pd.read_csv(self.path_to_lenses + 'selected_lenses_abmag_ABCD.csv')
         bands = ['u', 'g', 'r', 'i', 'z', 'y']
@@ -48,10 +66,34 @@ class DB(object):
         
         return
 
+    def sampleNlenses(self, area=20000):
+        """
+        Randomly select the appropiate number of lensed images according
+        to the expected lensed systems corresponding to a sky area.
+
+        Parameters
+        ----------
+        area : float, optional
+            In deg^2, default is 20000, must be between 0 and 100000.
+        """
+
+        lensids = np.unique([int(i.split('_')[0]) for i in self.lenses['ID'].values])
+        fraction = area/1e5
+        nlenses = int(len(lensids)*fraction)
+        selected_lenses = np.random.choice(np.unique(lensids), size=nlenses, replace=False)
+        self.sampled_lenses = self.lenses[self.lenses['LENSID'].isin(selected_lenses)]
+
+        return
+
     def expectedEvents(self):
+        """
+        Plots the expected number of events in 10 years for
+        each lensed image currently in the dataframe.
+        """
 
         bins = np.linspace(0, 3, 50)
         fig, ax = plt.subplots(1, 1, figsize=(12,12))
+        ax.set_title('Threshold = ' + str(self.threshold) + '  ' + self.band+'-band', fontsize=24)
         ax.hist(self.lenses[self.lenses['Parity']=='Minimum']['AllEvents'], bins=bins, density=False, alpha=0.5, label='Minimum images')
         ax.hist(self.lenses[self.lenses['Parity']=='Saddle']['AllEvents'], bins=bins, density=False, alpha=0.5, label='Saddle images')
         ax.set_xlabel('Expected no. of events in 10 years', fontsize=24)
@@ -62,9 +104,14 @@ class DB(object):
         return
 
     def fractionCaustic(self):
+        """
+        Plots the fraction of caustic crossing events for
+        each lensed image currently in the dataframe.
+        """
 
         bins = np.linspace(0, 1, 50)
         fig, ax = plt.subplots(1, 1, figsize=(12,12))
+        ax.set_title('Threshold = ' + str(self.threshold) + '  ' + self.band+'-band', fontsize=24)
         ax.hist(self.lenses[self.lenses['Parity']=='Minimum']['AllCcross']/self.lenses[self.lenses['Parity']=='Minimum']['AllEvents'], bins=bins, density=False, alpha=0.5, label='Minimum images')
         ax.hist(self.lenses[self.lenses['Parity']=='Saddle']['AllCcross']/self.lenses[self.lenses['Parity']=='Saddle']['AllEvents'], bins=bins, density=False, alpha=0.5, label='Saddle images')
         ax.set_xlabel('Fraction of caustic crossing events', fontsize=24)
@@ -75,6 +122,26 @@ class DB(object):
         return
 
     def select_images(self, random=True, Nimages=1, parity=None, ids=None):
+        """
+        Select from the lensed images currently in the dataframe.
+
+        Parameters
+        ----------
+        random : bool, optional
+            If True, randomly select Nimages, default is True.
+        Nimages : int, optional
+            The number of images to randomly select, default is 1.
+        Parity : None or str, optional
+            Choose if you want to select only lensed images with
+            the specified parity. Can be None, 'Minimum' or 'Saddle',
+            default is None. If None, then the lensed images are
+            selected from both parities.
+        ids : list, array-like of str or None, optional
+            If provided random must be set to False. Instead of
+            randomly selecting images, you can provide a list.
+            Must be the lensed image id, not the lens id (i.e. lens id =
+            4060, lensed image id = 4060_A).
+        """
 
         if random:
             if not parity:
@@ -85,11 +152,31 @@ class DB(object):
                 raise ValueError('parity has to be either None, "Minimum" or "Saddle"')
 
         else:
-            self.images = self.lenses.iloc[ids.index, :]
+            self.images = self.lenses.loc[ids.index, :]
 
         return 
 
     def sample_events(self, sample_durations=True, sample_magnitudes=True, cc_only=False, exclude_cc=False):
+        """
+        The method select_images must be called before. Generates the
+        durations and amplitudes of the events from the selected lensed
+        images.
+
+        Parameters
+        ----------
+        sample_durations : bool, optional
+            Default is True, choose if you want to generate the durations
+            of the events.
+        sample_magnitudes : bool, optional
+            Default is True, chooss if you want to generate the amplitudes
+            of the events.
+        cc_only : bool, optional
+            Default is False, if True only caustic crossing events are
+            generated.
+        exclude_cc : bool, optional
+            Default is False, if True only non-caustic crossing events
+            are generated.
+        """
 
         self.durations_sampled = sample_durations
         self.magnitudes_sampled = sample_magnitudes
@@ -205,6 +292,11 @@ class DB(object):
         return
 
     def plot_selected(self):
+        """
+        The method sample_events must be called before. Generates the plots
+        for all the properties of the events generated from the selected
+        lensed images.
+        """
 
         labels = [str(int(i['LENSID'])) + '_' + i['IMG'] for _,i in self.images.iterrows()]
 
@@ -259,6 +351,23 @@ class DB(object):
         return
 
     def plot_all(self, plot_durations=True, plot_magnitudes=True, cc_only=False, exclude_cc=False):
+        """
+        Generates the plots of the desired event properties for all the lensed images that
+        are currently in the dataframe. The events are classified in the parity of the image
+        from which they belong to. It is not required to run the sample_events method, this
+        function does it automatically.
+
+        Parameters
+        ----------
+        plot_durations : bool, optional
+            Choose if you want to plot the durations of the events, default is True.
+        plot_magnitudes : bool, optional
+            Choose if you want to plot the amplitudes of the events, default is True.
+        cc_only : bool, optional
+            Default is False, if True only caustic crossing events are plotted.
+        exclude_cc : bool, optional
+            Default is False, if True only non-caustic crossing events are plotted.
+        """
 
         self.cc = cc_only
         self.exclude_cc = exclude_cc
@@ -287,11 +396,12 @@ class DB(object):
             if plot_durations:
                 bins_durations = np.linspace(-40, 3652.5+80, 50)
                 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12,24), sharex=True)
+                ax1.set_title('Duration of caustic crossing events\nThreshold = ' + str(self.threshold) + '  ' + self.band+'-band', fontsize=24)
                 fig.subplots_adjust(hspace=0)
                 ax1.hist(durations_minima_strong, bins=bins_durations, density=True, color='b', alpha=0.5, label='strong')
                 ax1.hist(durations_minima_weak, bins=bins_durations, density=True, color='r', alpha=0.5, label='weak')
                 ax1.hist(durations_minima_single, bins=bins_durations, density=True, color='g', alpha=0.5, label='single')
-                ax1.set_title('Minimum images', y=0.95, fontsize=24)
+                ax1.text(0.5, 0.95, 'Minimum images', ha='center', transform=ax1.transAxes, fontsize=24)
                 ax1.set_ylabel('PDF', fontsize=24)
                 ax1.tick_params(axis='both', labelsize=24)
                 ax1.legend(prop={'size': 24})
@@ -299,18 +409,19 @@ class DB(object):
                 ax2.hist(durations_saddle_strong, bins=bins_durations, density=True, color='b', alpha=0.5)
                 ax2.hist(durations_saddle_weak, bins=bins_durations, density=True, color='r', alpha=0.5)
                 ax2.hist(durations_saddle_single, bins=bins_durations, density=True, color='g', alpha=0.5)
-                ax2.set_title('Saddle images', y=0.95, fontsize=24)
+                ax2.text(0.5, 0.95, 'Saddle images', ha='center', transform=ax2.transAxes, fontsize=24)
                 ax2.set_xlabel('Duration [days]', fontsize=24)
                 ax2.set_ylabel('PDF', fontsize=24)
                 ax2.tick_params(axis='both', labelsize=24);
             if plot_magnitudes:
                 bins_magnitudes = np.arange(0, 3.5, 0.05)
                 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12,24), sharex=True)
+                ax1.set_title('Amplitude of caustic crossing events\nThreshold = ' + str(self.threshold) + '  ' + self.band+'-band', fontsize=24)
                 fig.subplots_adjust(hspace=0)
                 ax1.hist(magnitudes_minima_strong, bins=bins_magnitudes, density=True, color='b', alpha=0.5, label='strong')
                 ax1.hist(magnitudes_minima_weak, bins=bins_magnitudes, density=True, color='r', alpha=0.5, label='weak')
                 ax1.hist(magnitudes_minima_single, bins=bins_magnitudes, density=True, color='g', alpha=0.5, label='single')
-                ax1.set_title('Minimum images', y=0.95, fontsize=24)
+                ax1.text(0.5, 0.95, 'Minimum images', ha='center', transform=ax1.transAxes, fontsize=24)
                 ax1.set_ylabel('PDF', fontsize=24)
                 ax1.tick_params(axis='both', labelsize=24)
                 ax1.legend(prop={'size': 24})
@@ -318,7 +429,7 @@ class DB(object):
                 ax2.hist(magnitudes_saddle_strong, bins=bins_magnitudes, density=True, color='b', alpha=0.5)
                 ax2.hist(magnitudes_saddle_weak, bins=bins_magnitudes, density=True, color='r', alpha=0.5)
                 ax2.hist(magnitudes_saddle_single, bins=bins_magnitudes, density=True, color='g', alpha=0.5)
-                ax2.set_title('Saddle images', y=0.95, fontsize=24)
+                ax2.text(0.5, 0.95, 'Saddle images', ha='center', transform=ax2.transAxes, fontsize=24)
                 ax2.set_xlabel('$\Delta$mag', fontsize=24)
                 ax2.set_ylabel('PDF', fontsize=24)
                 ax2.tick_params(axis='both', labelsize=24);
@@ -342,6 +453,10 @@ class DB(object):
             if plot_durations:
                 bins_durations = np.linspace(-40, 3652.5+80, 50)
                 fig, ax = plt.subplots(1, 1, figsize=(12,12))
+                if self.exclude_cc:
+                    ax.set_title('Duration of all non-caustic crossing HMEs\nThreshold = ' + str(self.threshold) + '  ' + self.band+'-band', fontsize=24)
+                else:
+                    ax.set_title('Duration of all HMEs\nThreshold = ' + str(self.threshold) + '  ' + self.band+'-band', fontsize=24)
                 ax.hist(durations_minima, bins=bins_durations, density=True, alpha=0.5, label='Minimum images')
                 ax.hist(durations_saddle, bins=bins_durations, density=True, alpha=0.5, label='Saddle images')
                 ax.set_xlabel('Duration [days]', fontsize=24)
@@ -351,6 +466,10 @@ class DB(object):
             if plot_magnitudes:
                 bins_magnitudes = np.arange(0, 3.5, 0.05)
                 fig, ax = plt.subplots(1, 1, figsize=(12,12))
+                if self.exclude_cc:
+                    ax.set_title('Amplitude of all non-caustic crossing HMEs\nThreshold = ' + str(self.threshold) + '  ' + self.band+'-band', fontsize=24)
+                else:
+                    ax.set_title('Amplitude of all HMEs\nThreshold = ' + str(self.threshold) + '  ' + self.band+'-band', fontsize=24)
                 ax.hist(magnitudes_minima, bins=bins_magnitudes, density=True, alpha=0.5, label='Minimum images')
                 ax.hist(magnitudes_saddle, bins=bins_magnitudes, density=True, alpha=0.5, label='Saddle images')
                 ax.set_xlabel('$\Delta$mag', fontsize=24)
