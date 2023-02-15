@@ -7,7 +7,7 @@ Includes a database of high magnification events (HME) for the lensed quasars.
 
 Clone the repository to your local machine
 ```
-git clone https://github.com/fcneirad/NAV22.git
+git clone https://github.com/fcneirad/OM10-HME.git
 ```
 then decompress the database files by running
 ```
