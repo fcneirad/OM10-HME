@@ -1,4 +1,4 @@
-# NAV22
+# OM10-HME
 
 Online appendix of Neira, Anguita & Vernardos 2022.
 Includes a database of high magnification events (HME) for the lensed quasars.
